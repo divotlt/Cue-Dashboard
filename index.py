@@ -3,7 +3,6 @@ Coded entirely by ChatGPT and Gemini, because I'm not going to try leaking my ac
 I may use some code from this file and use the ideas similar in this file. Otherthan that, this is entirely just vibe-coded.
 """
 
-
 import os
 import time
 import asyncio
@@ -237,8 +236,8 @@ async def on_message(message):
     if bot.user in message.mentions or isinstance(message.channel, discord.DMChannel):
         async with message.channel.typing():
             try:
-                api_key = os.getenv("OPENAI_API_KEY")
-                if not api_key: raise ValueError("OPENAI_API_KEY missing from environment.")
+                verba_key = os.getenv("VERBA_API")
+                if not verba_key: raise ValueError("VERBA_API key missing from environment.")
 
                 # Gather context
                 guild_info = await scrape_context(message.guild)
@@ -255,12 +254,11 @@ async def on_message(message):
                 # Build payload
                 messages_payload = [{"role": "system", "content": SYSTEM_PROMPT + "\n" + context_header}] + history
 
-                api_url = "https://api.openai.com/v1/chat/completions"
-                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                api_url = "https://api.verba.ink/v1/response"
+                headers = {"Authorization": f"Bearer {verba_key}", "Content-Type": "application/json"}
                 payload = {
-                    "model": "gpt-4o-mini", # Change to whatever model you prefer
-                    "messages": messages_payload,
-                    "max_tokens": 500
+                    "character": "apicuefree_p2h", 
+                    "messages": messages_payload
                 }
 
                 # Make the API call
@@ -275,6 +273,7 @@ async def on_message(message):
                 # Save AI response to memory
                 history.append({"role": "assistant", "content": reply})
                 if len(history) > MAX_MEMORY:
+                    # Keep the system prompt out of the sliced history, just keep the last MAX_MEMORY messages
                     history = history[-MAX_MEMORY:]
                     conversation_history[message.channel.id] = history
 
@@ -284,9 +283,9 @@ async def on_message(message):
                 if message.guild:
                     try:
                         webhooks = await message.channel.webhooks()
-                        wh = next((w for w in webhooks if w.name == bot.user.name), None)
-                        if not wh: wh = await message.channel.create_webhook(name=bot.user.name)
-                        await wh.send(content=reply, username=bot.user.display_name, avatar_url=bot.user.display_avatar.url, wait=True)
+                        wh = next((w for w in webhooks if w.name == "apicuefree_p2h"), None)
+                        if not wh: wh = await message.channel.create_webhook(name="apicuefree_p2h")
+                        await wh.send(content=reply, username="apicuefree_p2h", avatar_url=bot.user.display_avatar.url, wait=True)
                     except discord.Forbidden:
                         await message.reply(reply)
                 else:
