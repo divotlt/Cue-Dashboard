@@ -1,0 +1,16 @@
+# Security: NEVER upload environment variables
+.env
+
+# Python Virtual Environments
+venv/
+env/
+.venv/
+
+# Python Cache (unnecessary clutter)
+__pycache__/
+*.pyc
+*.pyo
+
+# OS generated files
+.DS_Store
+Thumbs.db
