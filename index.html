@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>apicuefree_p2h | C2 System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; background: #050505; color: white; font-family: 'Space Grotesk', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .bg { position: fixed; width: 100%; height: 100%; background: radial-gradient(circle at 50% 50%, #1e293b 0%, #050505 100%); z-index: -1; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 40px; width: 100%; max-width: 600px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        
+        h1 { margin-top: 0; color: #3b82f6; text-shadow: 0 0 20px rgba(59, 130, 246, 0.5); text-align: center;}
+        
+        input, select, button { width: 100%; padding: 12px; margin-top: 10px; margin-bottom: 20px; background: rgba(0,0,0,0.5); border: 1px solid #334155; color: white; border-radius: 8px; font-family: inherit; box-sizing: border-box;}
+        button { background: #3b82f6; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #2563eb; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
+        .label { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+        .val { font-size: 24px; font-weight: 700; color: #f8fafc; margin-top: 5px; }
+        
+        .success { color: #22c55e; text-align: center; margin-bottom: 15px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="bg"></div>
+    <div class="glass">
+        
+        {% if not session.logged_in %}
+            <h1>System Override</h1>
+            <form method="POST" action="/login">
+                <label class="label">Authorization Key</label>
+                <input type="password" name="password" placeholder="Enter password..." required>
+                {% if error %}<p style="color: #ef4444; font-size: 12px;">{{ error }}</p>{% endif %}
+                <button type="submit">Access Matrix</button>
+            </form>
+        {% else %}
+            <h1>C2 Control Panel</h1>
+            
+            <div class="grid">
+                <div class="stat-card"><div class="label">Queries</div><div class="val">{{ stats.queries }}</div></div>
+                <div class="stat-card"><div class="label">Latency</div><div class="val">{{ stats.latency }}ms</div></div>
+            </div>
+
+            <hr style="border-color: #334155; margin-bottom: 20px;">
+            
+            <div class="label">Transmit Message as Bot</div>
+            <form id="sendForm">
+                <select id="serverSelect" onchange="loadChannels()">
+                    <option value="">-- Select Server --</option>
+                    {% for guild in guilds %}
+                        <option value="{{ guild.id }}">{{ guild.name }}</option>
+                    {% endfor %}
+                </select>
+
+                <select id="channelSelect" required disabled>
+                    <option value="">-- Select Channel --</option>
+                </select>
+
+                <input type="text" id="messageBox" placeholder="Type message to send as bot..." required>
+                
+                <div id="statusMsg" class="success">Message Transmitted!</div>
+                <button type="submit" id="sendBtn">Send Payload</button>
+            </form>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="/logout" style="color: #ef4444; text-decoration: none; font-size: 12px;">[ Disconnect Session ]</a>
+            </div>
+
+            <script>
+                async function loadChannels() {
+                    const guildId = document.getElementById('serverSelect').value;
+                    const chanSelect = document.getElementById('channelSelect');
+                    chanSelect.innerHTML = '<option value="">-- Loading --</option>';
+                    chanSelect.disabled = true;
+
+                    if (!guildId) return;
+
+                    const res = await fetch('/api/channels/' + guildId);
+                    const channels = await res.json();
+                    
+                    chanSelect.innerHTML = '<option value="">-- Select Channel --</option>';
+                    channels.forEach(ch => {
+                        chanSelect.innerHTML += `<option value="${ch.id}">#${ch.name}</option>`;
+                    });
+                    chanSelect.disabled = false;
+                }
+
+                document.getElementById('sendForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const btn = document.getElementById('sendBtn');
+                    const channelId = document.getElementById('channelSelect').value;
+                    const content = document.getElementById('messageBox').value;
+                    
+                    btn.innerText = "Sending...";
+                    btn.disabled = true;
+
+                    await fetch('/api/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channel_id: channelId, content: content })
+                    });
+
+                    document.getElementById('messageBox').value = '';
+                    document.getElementById('statusMsg').style.display = 'block';
+                    btn.innerText = "Send Payload";
+                    btn.disabled = false;
+                    
+                    setTimeout(() => { document.getElementById('statusMsg').style.display = 'none'; }, 3000);
+                });
+            </script>
+        {% endif %}
+    </div>
+</body>
+</html>
