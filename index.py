@@ -31,7 +31,7 @@ bot_loop = None
 app = Flask(__name__)
 # Secure the session cookies
 app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24))
-DASH_PASSWORD = os.getenv("DASH_PASSWORD", "admin123") # Change this in your .env!
+DASH_PASSWORD = os.getenv("DASH_PASSWORD") # Change this in your .env!
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
