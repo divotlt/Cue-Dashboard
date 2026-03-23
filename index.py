@@ -186,15 +186,17 @@ async def on_message(message: discord.Message):
     # 1. ANIMATION: Send a temporary loading message
     status_msg = await message.reply("⏳ *Thinking...*")
     start_gen_time = time.time()
-
+    username=message.author.name
+    user_id=message.author.id
+    user_message=message.content
     try:
         client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
 
         response = client.models.generate_content(
             model="gemini-3-flash-preview",
             config=types.GenerateContentConfig(
-                system_instruction=str(system_prompt) + "Try to use tools when available, but if you have no tools avoid mentioning about them. You are allowed to disagree or make your own choices making your own thinking. Focus on creating thinking that is unique from genericity."),
-            contents=f"{perm_memory} + {messages}\n**INPUT:** ({username}:{user_id} [Status: {activities}]): {user_message}"
+                system_instruction="You are an AI named Cue, your purpose is to act like an ego angsty teen that loves using slang while talking like a short-end sentence writer with vague answers without clear conclusions"),
+            contents=f"({username}:{user_id}): {user_message}"
         )
 
         reply_text = response.text
