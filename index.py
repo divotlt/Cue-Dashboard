@@ -186,21 +186,21 @@ async def on_message(message: discord.Message):
     start_gen_time = time.time()
 
     try:
-        response = requests.post(
-            "https://api.ollama.com/v1/chat",
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "minimax-m2.1:cloud",
-                "messages": [{"role": "user", "content": message.content}]
-            }
+        client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
+
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            config=types.GenerateContentConfig(
+                system_instruction=str(system_prompt) + "Try to use tools when available, but if you have no tools avoid mentioning about them. You are allowed to disagree or make your own choices making your own thinking. Focus on creating thinking that is unique from genericity."),
+            contents=f"{perm_memory} + {messages}\n**INPUT:** ({username}:{user_id} [Status: {activities}]): {user_message}"
         )
-        
-        data = response.json()
-        reply = data["message"]["content"]
-        
+
+        reply_text = response.text
+        if not reply_text or not str(reply_text).strip():
+            # if the response is empty, go to expection
+            raise ValueError("Empty response from Gemini 3 Flash")
+
+
         # Discord Embed limits descriptions to 4096 chars
         if len(reply) > 4000:
             reply = reply[:4000] + "...\n*(Message truncated due to length)*"
