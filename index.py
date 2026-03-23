@@ -190,112 +190,128 @@ def api_send():
 def run_web():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
 
+import os
+import time
+import asyncio
+import logging
+import aiohttp
+import json
+from collections import defaultdict
+from threading import Thread
+
+import discord
+from discord.ext import commands
+from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
+
 # ========================
-# DISCORD BOT LOGIC
+# CONFIG & LOGGING
+# ========================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+bot_stats = {"queries": 0, "start_time": time.time()}
+bot_loop = None
+
+conversation_history = defaultdict(list)
+MAX_MEMORY = 10
+
+SYSTEM_PROMPT = """You are a helpful, casual, and highly intelligent Discord user."""
+
+# ========================
+# FLASK DASHBOARD (unchanged core)
+# ========================
+app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24))
+DASH_PASSWORD = os.getenv("DASH_PASSWORD", "admin123")
+
+@app.route("/")
+def dashboard():
+    return "Bot Running"
+
+# ========================
+# DISCORD BOT
 # ========================
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-async def scrape_context(guild):
-    """Safely fetch server rules if available."""
-    context_data = {"rules": "None"}
-    if not guild: return context_data
-    try:
-        for ch in guild.text_channels:
-            if "rule" in ch.name.lower() or "info" in ch.name.lower():
-                if ch.permissions_for(guild.me).read_message_history:
-                    messages = [m.content async for m in ch.history(limit=5)]
-                    context_data["rules"] = "\n".join(messages)[:800]
-                    break
-    except Exception as e:
-        logger.warning(f"Could not fetch rules: {e}")
-    return context_data
-
 @bot.event
 async def on_ready():
     global bot_loop
     bot_loop = asyncio.get_running_loop()
-    logger.info(f"AI Matrix Active: {bot.user}")
-
-@bot.command(name="wipe")
-async def wipe_memory(ctx):
-    """Clears the AI's short-term memory for the current channel."""
-    conversation_history[ctx.channel.id].clear()
-    await ctx.send("🧠 Memory wiped for this channel.")
+    print(f"Logged in as {bot.user}")
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
-        
-    # Process standard commands first (!wipe, etc)
+
     await bot.process_commands(message)
 
-    # Trigger AI if pinged or in DMs
     if bot.user in message.mentions or isinstance(message.channel, discord.DMChannel):
-        async with message.channel.typing():
-            try:
-                verba_key = os.getenv("VERBA_API")
-                if not verba_key: raise ValueError("VERBA_API key missing from environment.")
+        status_msg = await message.reply("...")
 
-                # Gather context
-                guild_info = await scrape_context(message.guild)
-                pins = []
-                if message.channel.permissions_for(message.guild.me).read_message_history if message.guild else True:
-                    pins = [p.content for p in await message.channel.pins()]
-                
-                context_header = f"""[SERVER DATA] Name: {message.guild.name if message.guild else "DMs"}, Rules: {guild_info['rules']}, Pinned: {", ".join(pins[:3]) if pins else "None"}"""
+        try:
+            verba_key = os.getenv("VERBA_API")
+            if not verba_key:
+                raise ValueError("Missing VERBA_API key")
 
-                # Update memory
-                history = conversation_history[message.channel.id]
-                history.append({"role": "user", "content": f"{message.author.display_name}: {message.clean_content}"})
-                
-                # Build payload
-                messages_payload = [{"role": "system", "content": SYSTEM_PROMPT + "\n" + context_header}] + history
+            history = conversation_history[message.channel.id]
+            history.append({"role": "user", "content": message.content})
 
-                api_url = "https://api.verba.ink/v1/response"
-                headers = {"Authorization": f"Bearer {verba_key}", "Content-Type": "application/json"}
-                payload = {
-                    "character": "apicuefree_p2h", 
-                    "messages": messages_payload
-                }
+            payload = {
+                "character": "apicuefree_p2h",
+                "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
+                "stream": True
+            }
 
-                # Make the API call
-                async with aiohttp.ClientSession() as session_http:
-                    async with session_http.post(api_url, headers=headers, json=payload) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            reply = data["choices"][0]["message"]["content"]
-                        else:
-                            raise Exception(f"API Error {resp.status}: {await resp.text()}")
+            headers = {
+                "Authorization": f"Bearer {verba_key}",
+                "Content-Type": "application/json"
+            }
 
-                # Save AI response to memory
-                history.append({"role": "assistant", "content": reply})
-                if len(history) > MAX_MEMORY:
-                    # Keep the system prompt out of the sliced history, just keep the last MAX_MEMORY messages
-                    history = history[-MAX_MEMORY:]
-                    conversation_history[message.channel.id] = history
+            reply = ""
 
-                bot_stats["queries"] += 1
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session_http:
+                async with session_http.post(
+                    "https://api.verba.ink/v1/response",
+                    headers=headers,
+                    json=payload
+                ) as resp:
 
-                # Send via Webhook to match persona (or fallback to normal message)
-                if message.guild:
-                    try:
-                        webhooks = await message.channel.webhooks()
-                        wh = next((w for w in webhooks if w.name == "apicuefree_p2h"), None)
-                        if not wh: wh = await message.channel.create_webhook(name="apicuefree_p2h")
-                        await wh.send(content=reply, username="apicuefree_p2h", avatar_url=bot.user.display_avatar.url, wait=True)
-                    except discord.Forbidden:
-                        await message.reply(reply)
-                else:
-                    await message.reply(reply)
+                    async for line in resp.content:
+                        chunk = line.decode().strip()
 
-            except Exception as e:
-                logger.error(f"AI Failure: {e}")
-                await message.reply(f"⚠️ `System Error: {e}`")
+                        if not chunk.startswith("data:"):
+                            continue
+
+                        if chunk == "data: [DONE]":
+                            break
+
+                        try:
+                            data = json.loads(chunk.replace("data: ", ""))
+                            delta = data["choices"][0].get("delta", {}).get("content", "")
+                            reply += delta
+
+                            if len(reply) % 50 == 0:
+                                await status_msg.edit(content=reply[:1900])
+
+                        except Exception:
+                            continue
+
+            await status_msg.edit(content=reply[:1900])
+
+            history.append({"role": "assistant", "content": reply})
+            if len(history) > MAX_MEMORY:
+                del history[:-MAX_MEMORY]
+
+            bot_stats["queries"] += 1
+
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            await status_msg.edit(content=f"Error: {e}")
 
 if __name__ == "__main__":
-    # Start web server FIRST so Replit doesn't kill the process
-    Thread(target=run_web, daemon=True).start()
     bot.run(os.getenv("DISCORD_TOKEN"))
+
