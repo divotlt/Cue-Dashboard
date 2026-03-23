@@ -157,13 +157,18 @@ def dashboard():
     if not session.get("logged_in"):
         return render_template_string(HTML_TEMPLATE)
     
-    # Pass bot stats and guild list to the template
+    # Crash-proof the latency calculation
+    safe_latency = 0
+    if bot.latency and bot.latency != float('inf'):
+        safe_latency = int(bot.latency * 1000)
+    
     stats = {
         "queries": bot_stats["queries"],
-        "latency": int(bot.latency * 1000) if bot.latency else 0
+        "latency": safe_latency
     }
     guilds = [{"id": str(g.id), "name": g.name} for g in bot.guilds]
     return render_template_string(HTML_TEMPLATE, stats=stats, guilds=guilds)
+    
 
 @app.route("/login", methods=["POST"])
 def login():
