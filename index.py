@@ -1,5 +1,6 @@
 """
-Coded entirely by ChatGPT and Gemini, because I'm not going to try leaking my actual code I use for running my script
+Coded entirely by ChatGPT and Gemini, because I'm not going to try leaking my actual code I use for running my script. 
+I may use some code from this file and use the ideas similar in this file. Otherthan that, this is entirely just vibe-coded.
 """
 
 import os
