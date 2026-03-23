@@ -167,11 +167,21 @@ def dashboard():
 
 @app.route("/login", methods=["POST"])
 def login():
-    if request.form.get("password") == DASH_PASSWORD:
-        session["logged_in"] = True
-        return redirect(url_for("dashboard"))
-    return render_template_string(HTML_TEMPLATE, error="Invalid credentials.")
+    entered_password = request.form.get("password")
+    
+    # This will print directly to your Replit console so you can see what's happening
+    print(f"\n[SYSTEM DEBUG] Someone tried to log in.")
+    print(f"[SYSTEM DEBUG] They typed: '{entered_password}'")
+    print(f"[SYSTEM DEBUG] The system expects: '{DASH_PASSWORD}'\n")
 
+    if entered_password == DASH_PASSWORD:
+        session["logged_in"] = True
+        print("[SYSTEM DEBUG] Access Granted! Redirecting...")
+        return redirect(url_for("dashboard"))
+        
+    print("[SYSTEM DEBUG] Access Denied. Passwords did not match.")
+    return render_template("index.html", error="Invalid credentials.")
+    
 @app.route("/logout")
 def logout():
     session.pop("logged_in", None)
