@@ -1,4 +1,6 @@
 discord.py
 flask
-genai
+google-genai
+python-dotenv
+httpx
 requests
