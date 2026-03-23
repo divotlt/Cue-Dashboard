@@ -7,7 +7,7 @@ from threading import Thread
 import discord
 from discord.ext import commands
 from flask import Flask
-from ollama import Client
+import requests
 
 # ========================
 # LOGGING SETUP
@@ -15,6 +15,7 @@ from ollama import Client
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+API_KEY = os.getenv("OLLAMA_API_KEY")
 # ========================
 # KEEP ALIVE (Render free tier)
 # ========================
@@ -137,8 +138,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-client = Client(host="http://localhost:11434")
-
 # ========================
 # TRACKERS & COOLDOWNS
 # ========================
@@ -187,14 +186,20 @@ async def on_message(message: discord.Message):
     start_gen_time = time.time()
 
     try:
-        # Run blocking AI call
-        response = await asyncio.to_thread(
-            client.chat,
-            model="minimax-m2.1:cloud",
-            messages=[{"role": "user", "content": message.content}]
+        response = requests.post(
+            "https://api.ollama.com/v1/chat",
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "minimax-m2.1:cloud",
+                "messages": [{"role": "user", "content": message.content}]
+            }
         )
         
-        reply = response.get("message", {}).get("content", "No response.")
+        data = response.json()
+        reply = data["message"]["content"]
         
         # Discord Embed limits descriptions to 4096 chars
         if len(reply) > 4000:
