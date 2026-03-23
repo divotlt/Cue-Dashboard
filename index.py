@@ -8,6 +8,8 @@ import discord
 from discord.ext import commands
 from flask import Flask
 import requests
+from google import genai
+from google.genai import types
 
 # ========================
 # LOGGING SETUP
