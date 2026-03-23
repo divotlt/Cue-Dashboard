@@ -20,9 +20,106 @@ logger = logging.getLogger(__name__)
 # ========================
 app = Flask(__name__)
 
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2c2f33; /* Discord-like dark theme */
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .dashboard {
+            background-color: #23272a;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 300px;
+        }
+        .status-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        /* The Animation */
+        .pulse-dot {
+            height: 16px;
+            width: 16px;
+            background-color: #43b581; /* Online green */
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 12px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(67, 181, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(67, 181, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(67, 181, 129, 0); }
+        }
+        .divider {
+            height: 2px;
+            background-color: #2c2f33;
+            margin: 20px 0;
+            border: none;
+        }
+        .stats {
+            text-align: left;
+            font-size: 16px;
+            line-height: 1.8;
+        }
+        .stat-label {
+            color: #7289da; /* Blurple */
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <div class="status-container">
+            <span class="pulse-dot"></span> System Online
+        </div>
+        
+        <hr class="divider">
+        
+        <div class="stats">
+            <div><span class="stat-label">Total AI Queries:</span> {{ queries }}</div>
+            <div><span class="stat-label">Server Uptime:</span> {{ uptime }}</div>
+        </div>
+    </div>
+
+</body>
+</html>
+"""
+
 @app.route('/')
 def home() -> str:
-    return "Bot is alive and running."
+    """Renders the web dashboard with live bot statistics."""
+    # Calculate uptime dynamically when the page is refreshed
+    uptime_seconds = int(time.time() - bot_stats["start_time"])
+    m, s = divmod(uptime_seconds, 60)
+    h, m = divmod(m, 60)
+    uptime_str = f"{h}h {m}m {s}s"
+    
+    # Inject the stats into the HTML template
+    return render_template_string(
+        HTML_TEMPLATE, 
+        queries=bot_stats["total_queries"], 
+        uptime=uptime_str
+    )
 
 def run_web() -> None:
     port = int(os.environ.get("PORT", 10000))
