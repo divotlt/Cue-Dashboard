@@ -25,7 +25,7 @@ bot_stats = {"queries": 0, "start_time": time.time()}
 bot_loop = None
 conversation_history = defaultdict(list)
 MAX_MEMORY = 10
-SYSTEM_PROMPT = "You are a helpful, casual, intelligent Discord user."
+SYSTEM_PROMPT = "You're an AI named Cue, you love using very unhinged hyperventive humor in a vague short answer that'll answer the user's answer. You are currently on Discord"
 
 # ========================
 # FLASK DASHBOARD
@@ -194,54 +194,73 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot:
         return
+
     await bot.process_commands(message)
 
     if bot.user in message.mentions or isinstance(message.channel, discord.DMChannel):
-        status_msg = await message.reply("...")
+        status_msg = await message.reply('Processing...')
+
+        verba_key = os.getenv('VERBA_API_KEY')
+        if not verba_key:
+            await status_msg.edit(content='Error: Missing VERBA_API_KEY')
+            return
+
+        history = conversation_history[message.channel.id]
+        history.append({"role": "user", "content": message.content})
+
+        payload = {
+            "character": os.getenv('VERBA_CHARACTER', 'default_character'),
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
+            "stream": True
+        }
+
+        headers = {
+            "Authorization": f"Bearer {verba_key}",
+            "Content-Type": "application/json",
+        }
+
+        reply = ''
+        chunk_buffer = ''
+        timeout = aiohttp.ClientTimeout(total=30)
 
         try:
-            verba_key = os.getenv("VERBA_API")
-            if not verba_key:
-                raise ValueError("Missing VERBA_API key")
-
-            history = conversation_history[message.channel.id]
-            history.append({"role": "user", "content": message.content})
-
-            payload = {
-                "character": "apicuefree_p2h",
-                "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
-                "stream": True
-            }
-            headers = {"Authorization": f"Bearer {verba_key}", "Content-Type": "application/json"}
-            reply = ""
-            timeout = aiohttp.ClientTimeout(total=30)
-
             async with aiohttp.ClientSession(timeout=timeout) as session_http:
                 async with session_http.post("https://api.verba.ink/v1/response", headers=headers, json=payload) as resp:
+                    if resp.status != 200:
+                        raise ValueError(f'HTTP Error: {resp.status}')
+
                     async for line in resp.content:
                         chunk = line.decode().strip()
-                        if not chunk.startswith("data:"):
+                        if not chunk.startswith('data:'):
                             continue
-                        if chunk == "data: [DONE]":
+                        if chunk == 'data: [DONE]':
                             break
+
                         try:
-                            data = json.loads(chunk.replace("data: ", ""))
-                            delta = data["choices"][0].get("delta", {}).get("content", "")
-                            reply += delta
-                            if len(reply) % 50 == 0:
+                            data = json.loads(chunk.replace('data: ', ''))
+                            delta = data['choices'][0].get('delta', {}).get('content', '')
+                            if delta:
+                                reply += delta
+                                chunk_buffer += delta
+
+                            if len(chunk_buffer) >= 500:
                                 await status_msg.edit(content=reply[:1900])
-                        except: continue
+                                chunk_buffer = ''
+
+                        except Exception as e:
+                            logger.error(f'Chunk parse error: {e}')
 
             await status_msg.edit(content=reply[:1900])
             history.append({"role": "assistant", "content": reply})
             if len(history) > MAX_MEMORY:
-                del history[:-MAX_MEMORY]
-            bot_stats["queries"] += 1
+                conversation_history[message.channel.id] = history[-MAX_MEMORY:]
 
+        except asyncio.TimeoutError:
+            await status_msg.edit(content='Error: Request timed out')
+            logger.error('Timeout while connecting to Verba API')
         except Exception as e:
-            logger.error(e)
-            await status_msg.edit(content=f"Error: {e}")
-
+            await status_msg.edit(content=f'Error: {e}')
+            logger.error(f'Unexpected error: {e}')
 # ========================
 # START BOTH SERVICES
 # ========================
