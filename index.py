@@ -190,6 +190,7 @@ async def on_ready():
     bot_loop = asyncio.get_running_loop()
     print(f"Logged in as {bot.user}")
 
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -243,14 +244,16 @@ async def on_message(message):
                                 reply += delta
                                 chunk_buffer += delta
 
-                            if len(chunk_buffer) >= 500:
+                            if len(chunk_buffer) >= 500 and reply.strip():
                                 await status_msg.edit(content=reply[:1900])
                                 chunk_buffer = ''
 
                         except Exception as e:
                             logger.error(f'Chunk parse error: {e}')
 
-            await status_msg.edit(content=reply[:1900])
+            final_content = reply[:1900].strip() or "No response received."
+            await status_msg.edit(content=final_content)
+
             history.append({"role": "assistant", "content": reply})
             if len(history) > MAX_MEMORY:
                 conversation_history[message.channel.id] = history[-MAX_MEMORY:]
@@ -259,8 +262,10 @@ async def on_message(message):
             await status_msg.edit(content='Error: Request timed out')
             logger.error('Timeout while connecting to Verba API')
         except Exception as e:
-            await status_msg.edit(content=f'Error: {e}')
+            safe_error = str(e) or 'Unknown error'
+            await status_msg.edit(content=f'Error: {safe_error}')
             logger.error(f'Unexpected error: {e}')
+            
 # ========================
 # START BOTH SERVICES
 # ========================
