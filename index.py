@@ -2,12 +2,12 @@
 Coded entirely by ChatGPT and Gemini, because I'm not going to try leaking my actual code I use for running my script. 
 I may use some code from this file and use the ideas similar in this file. Otherthan that, this is entirely just vibe-coded.
 """
-
 import os
 import time
 import asyncio
 import logging
 import aiohttp
+import json
 from collections import defaultdict
 from threading import Thread
 
@@ -22,24 +22,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 bot_stats = {"queries": 0, "start_time": time.time()}
-bot_loop = None 
-
-# Memory buffer: Stores the last 10 messages per channel ID
+bot_loop = None
 conversation_history = defaultdict(list)
 MAX_MEMORY = 10
-
-# The AI's personality
-SYSTEM_PROMPT = """You are a helpful, casual, and highly intelligent Discord user. 
-Speak naturally, use standard capitalization, and avoid sounding like a robotic assistant. 
-Do not use overly formal language. Keep your answers concise unless asked for details.
-You are aware of the server context and recent message history provided to you."""
+SYSTEM_PROMPT = "You are a helpful, casual, intelligent Discord user."
 
 # ========================
-# FLASK C2 DASHBOARD
+# FLASK DASHBOARD
 # ========================
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24))
-DASH_PASSWORD = os.getenv("DASH_PASSWORD", "admin123") 
+DASH_PASSWORD = os.getenv("DASH_PASSWORD", "admin123")
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -175,13 +168,7 @@ def api_send():
     async def send_to_discord():
         channel = bot.get_channel(channel_id)
         if channel:
-            try:
-                webhooks = await channel.webhooks()
-                wh = next((w for w in webhooks if w.name == bot.user.name), None)
-                if not wh: wh = await channel.create_webhook(name=bot.user.name)
-                await wh.send(content=content, username=bot.user.display_name, avatar_url=bot.user.display_avatar.url)
-            except discord.Forbidden:
-                await channel.send(content) # Fallback if webhook permission is missing
+            await channel.send(content)
 
     if bot_loop:
         asyncio.run_coroutine_threadsafe(send_to_discord(), bot_loop)
@@ -189,44 +176,6 @@ def api_send():
 
 def run_web():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
-
-import os
-import time
-import asyncio
-import logging
-import aiohttp
-import json
-from collections import defaultdict
-from threading import Thread
-
-import discord
-from discord.ext import commands
-from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
-
-# ========================
-# CONFIG & LOGGING
-# ========================
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-bot_stats = {"queries": 0, "start_time": time.time()}
-bot_loop = None
-
-conversation_history = defaultdict(list)
-MAX_MEMORY = 10
-
-SYSTEM_PROMPT = """You are a helpful, casual, and highly intelligent Discord user."""
-
-# ========================
-# FLASK DASHBOARD (unchanged core)
-# ========================
-app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24))
-DASH_PASSWORD = os.getenv("DASH_PASSWORD", "admin123")
-
-@app.route("/")
-def dashboard():
-    return "Bot Running"
 
 # ========================
 # DISCORD BOT
@@ -245,7 +194,6 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot:
         return
-
     await bot.process_commands(message)
 
     if bot.user in message.mentions or isinstance(message.channel, discord.DMChannel):
@@ -264,54 +212,39 @@ async def on_message(message):
                 "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
                 "stream": True
             }
-
-            headers = {
-                "Authorization": f"Bearer {verba_key}",
-                "Content-Type": "application/json"
-            }
-
+            headers = {"Authorization": f"Bearer {verba_key}", "Content-Type": "application/json"}
             reply = ""
-
             timeout = aiohttp.ClientTimeout(total=30)
-            async with aiohttp.ClientSession(timeout=timeout) as session_http:
-                async with session_http.post(
-                    "https://api.verba.ink/v1/response",
-                    headers=headers,
-                    json=payload
-                ) as resp:
 
+            async with aiohttp.ClientSession(timeout=timeout) as session_http:
+                async with session_http.post("https://api.verba.ink/v1/response", headers=headers, json=payload) as resp:
                     async for line in resp.content:
                         chunk = line.decode().strip()
-
                         if not chunk.startswith("data:"):
                             continue
-
                         if chunk == "data: [DONE]":
                             break
-
                         try:
                             data = json.loads(chunk.replace("data: ", ""))
                             delta = data["choices"][0].get("delta", {}).get("content", "")
                             reply += delta
-
                             if len(reply) % 50 == 0:
                                 await status_msg.edit(content=reply[:1900])
-
-                        except Exception:
-                            continue
+                        except: continue
 
             await status_msg.edit(content=reply[:1900])
-
             history.append({"role": "assistant", "content": reply})
             if len(history) > MAX_MEMORY:
                 del history[:-MAX_MEMORY]
-
             bot_stats["queries"] += 1
 
         except Exception as e:
-            logger.error(f"Error: {e}")
+            logger.error(e)
             await status_msg.edit(content=f"Error: {e}")
 
+# ========================
+# START BOTH SERVICES
+# ========================
 if __name__ == "__main__":
+    Thread(target=run_web, daemon=True).start()
     bot.run(os.getenv("DISCORD_TOKEN"))
-
